@@ -1,0 +1,32 @@
+# Data and generated outputs (raw data is versioned with DVC, not git)
+data/raw/*
+data/processed/*
+data/predictions/*
+data/drift/*
+reports/*
+!**/.gitkeep
+!data/raw/*.dvc
+mlruns/
+mlartifacts/
+mlflow.db
+*.pkl
+*.joblib
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Secrets and local config
+.env
+kaggle.json
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/

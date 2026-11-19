@@ -1,0 +1,27 @@
+# Owner: Devyani. Tune thresholds after the clean-test-set baseline run.
+groups:
+  - name: fraud-api
+    rules:
+      - alert: FraudRateSpike
+        # Baseline fraud rate is ~0.17%; a jump usually means input drift.
+        expr: |
+          sum(rate(fraud_predictions_total{label="fraud"}[5m]))
+            / sum(rate(fraud_predictions_total[5m])) > 0.02
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "Predicted fraud rate above 2% (possible data drift)"
+
+      - alert: HighPredictLatency
+        expr: histogram_quantile(0.95, sum(rate(fraud_predict_latency_seconds_bucket[5m])) by (le)) > 0.5
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "p95 /predict latency above 500 ms"
+
+      - alert: NoModelLoaded
+        expr: fraud_model_loaded == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "API is running without a model"

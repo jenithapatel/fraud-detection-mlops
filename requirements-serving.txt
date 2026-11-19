@@ -1,0 +1,10 @@
+# Minimal dependencies for the inference API (used by docker/Dockerfile)
+numpy>=1.26,<3
+pandas>=2.1,<3
+scikit-learn>=1.4,<1.8
+xgboost>=2.0,<4
+mlflow>=3.0,<4
+fastapi>=0.110,<1
+uvicorn[standard]>=0.29
+pydantic>=2.6,<3
+prometheus-client>=0.20

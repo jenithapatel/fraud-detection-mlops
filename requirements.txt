@@ -1,0 +1,6 @@
+# Full project dependencies (training, monitoring, data versioning)
+-r requirements-serving.txt
+flaml[automl]>=2.1
+evidently>=0.7,<0.8
+dvc>=3.50
+requests>=2.31

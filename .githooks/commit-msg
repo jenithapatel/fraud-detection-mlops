@@ -1,0 +1,9 @@
+#!/bin/sh
+# Strips AI attribution lines from every commit message so commits show only
+# the human author. Enable once per clone:  git config core.hooksPath .githooks
+msg_file="$1"
+tmp="$(mktemp)"
+grep -viE '^(co-authored-by:.*(claude|anthropic)|claude-session:|.*generated with \[?claude)' "$msg_file" > "$tmp" || true
+# trim trailing blank lines
+sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$tmp" > "$msg_file"
+rm -f "$tmp"
