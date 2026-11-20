@@ -60,7 +60,7 @@ pip install -r requirements-dev.txt
 git config core.hooksPath .githooks                     # strips AI attribution from commits
 git config user.name "<Your Name>"                      # your own identity
 git config user.email "<your GitHub email>"
-kaggle datasets download -d mlg-ulb/creditcardfraud -p data/raw --unzip
+dvc pull                                                # data from the shared Drive folder (Google sign-in on first run)
 python -m fraud.data.preprocess
 ruff check . && pytest -q
 ```

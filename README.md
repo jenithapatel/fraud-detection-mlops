@@ -32,7 +32,8 @@ See `docs/architecture.md` for the diagram.
 
 ## Reproduce locally
 
-Requirements: Python 3.10+, Docker, a Kaggle account.
+Requirements: Python 3.11, Docker, and access to the team's shared Google Drive
+DVC folder (or a Kaggle account as a fallback).
 
 ```bash
 # 1. Install and enable the commit hook
@@ -40,8 +41,10 @@ python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\act
 pip install -r requirements-dev.txt
 git config core.hooksPath .githooks
 
-# 2. Get the data
-kaggle datasets download -d mlg-ulb/creditcardfraud -p data/raw --unzip
+# 2. Get the data (versioned with DVC; the first pull opens a Google sign-in)
+dvc pull
+# Fallback without Drive access (same file, verify the md5 matches the .dvc file):
+# kaggle datasets download -d mlg-ulb/creditcardfraud -p data/raw --unzip
 
 # 3. Split the data
 python -m fraud.data.preprocess
