@@ -60,7 +60,9 @@ pip install -r requirements-dev.txt
 git config core.hooksPath .githooks                     # strips AI attribution from commits
 git config user.name "<Your Name>"                      # your own identity
 git config user.email "<your GitHub email>"
-dvc pull                                                # data from the shared Drive folder (Google sign-in on first run)
+dvc remote modify --local gdrive gdrive_client_id "<CLIENT_ID>"          # ask Jenitha
+dvc remote modify --local gdrive gdrive_client_secret "<CLIENT_SECRET>"  # never commit these
+dvc pull                                                # data from the shared Drive folder (sign in with @uchicago.edu)
 python -m fraud.data.preprocess
 ruff check . && pytest -q
 ```

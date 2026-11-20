@@ -41,8 +41,12 @@ python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\act
 pip install -r requirements-dev.txt
 git config core.hooksPath .githooks
 
-# 2. Get the data (versioned with DVC; the first pull opens a Google sign-in)
-dvc pull
+# 2. Get the data (versioned with DVC in the team's UChicago Google Drive folder).
+#    DVC's built-in Google app is blocked, so we use our own OAuth client.
+#    Ask Jenitha for the client ID/secret; --local keeps them out of git.
+dvc remote modify --local gdrive gdrive_client_id "<CLIENT_ID>"
+dvc remote modify --local gdrive gdrive_client_secret "<CLIENT_SECRET>"
+dvc pull          # first run opens a Google sign-in: use your @uchicago.edu account
 # Fallback without Drive access (same file, verify the md5 matches the .dvc file):
 # kaggle datasets download -d mlg-ulb/creditcardfraud -p data/raw --unzip
 
