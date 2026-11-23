@@ -1,5 +1,8 @@
 # Data and generated outputs (raw data is versioned with DVC, not git)
-data/raw/*
+# data/raw ignores file types, not "data/raw/*": DVC's gitignore matcher treats
+# "data/raw/*" as ignoring the folder itself and would skip the .dvc files.
+data/raw/*.csv
+data/raw/*.zip
 data/processed/*
 data/predictions/*
 data/drift/*
