@@ -72,6 +72,31 @@ python -m fraud.monitoring.drift_report     # writes reports/drift_report.html
 UIs: MLflow http://localhost:5000 · API docs http://localhost:8000/docs ·
 Prometheus http://localhost:9090 (Alerts tab) · Grafana http://localhost:3000.
 
+## Run the pipeline with Airflow
+
+Steps 3 and 5 above (ingest → preprocess → train → register) are orchestrated by
+the DAG `fraud_training_pipeline` in `dags/`. Airflow is an opt-in compose profile
+because the image is large:
+
+```bash
+dvc pull                                                # raw data must be present
+docker compose --profile airflow up -d --build mlflow airflow
+```
+
+Open http://localhost:8080 (no login locally), unpause `fraud_training_pipeline`
+and trigger it. Or use the CLI:
+
+```bash
+docker compose exec airflow airflow dags unpause fraud_training_pipeline
+docker compose exec airflow airflow dags trigger fraud_training_pipeline
+```
+
+The repo is mounted at `/opt/airflow/project`, so the DAG reads `data/raw/` and
+writes `data/processed/` on your machine. It registers the model in the `mlflow`
+service. Project dependencies run in their own virtualenv inside the Airflow
+image (`docker/airflow.Dockerfile`), separate from Airflow's packages. After a
+run, `curl -X POST localhost:8000/reload` makes the API serve the new champion.
+
 ## Try the API
 
 ```bash
