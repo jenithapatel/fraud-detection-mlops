@@ -38,5 +38,24 @@ services:
     ports: ["3000:3000"]
     depends_on: [prometheus]
 
+  # Opt-in (heavy): docker compose --profile airflow up -d --build airflow
+  # UI http://localhost:8080 (no login locally). Runs DAG fraud_training_pipeline.
+  airflow:
+    profiles: ["airflow"]
+    build:
+      context: .
+      dockerfile: docker/airflow.Dockerfile
+    command: standalone  # scheduler + API server + DAG processor, SQLite metadata DB
+    environment:
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/project/dags
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"  # local only: skip login
+      FRAUD_PYTHON: /home/airflow/fraud-venv/bin/python
+      PYTHONPATH: /opt/airflow/project/src  # import the mounted package without installing
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    ports: ["8080:8080"]
+    volumes: [.:/opt/airflow/project]
+    depends_on: [mlflow]
+
 volumes:
   mlflow-data:
