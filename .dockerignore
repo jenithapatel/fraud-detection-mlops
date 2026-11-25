@@ -1,0 +1,16 @@
+# Keep the Docker build context small: images COPY only requirements, pyproject
+# and src/. Data and the repo are mounted at runtime where needed, never baked in.
+.git
+.venv
+venv
+.dvc/cache
+data
+mlruns
+mlartifacts
+mlflow.db
+reports
+**/__pycache__
+.pytest_cache
+.ruff_cache
+.env
+kaggle.json
