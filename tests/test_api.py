@@ -67,3 +67,70 @@ def test_no_model_returns_503(client, fake_transactions):
     rows = fake_transactions[config.FEATURES].head(1).to_dict(orient="records")
     resp = client.post("/predict", json={"transactions": rows})
     assert resp.status_code == 503
+
+
+def test_schema_violation_counted(client):
+    from prometheus_client import REGISTRY
+
+    def count() -> float:
+        value = REGISTRY.get_sample_value(
+            "fraud_schema_violations_total", {"path": "/predict"}
+        )
+        return value or 0.0
+
+    before = count()
+    client.post("/predict", json={"transactions": [{"Time": 0.0}]})
+    client.post("/predict", json={"transactions": [{"Amount": "not a number"}]})
+    assert count() == before + 2
+    assert "fraud_schema_violations_total" in client.get("/metrics/").text
+
+
+def test_startup_retries_until_model_loads(monkeypatch):
+    """The first two loads fail (MLflow not up yet), the third succeeds."""
+    from fraud.serving import app as app_module
+    from fraud.serving.model_loader import DummyModel, LoadedModel
+
+    calls = {"n": 0}
+
+    def flaky_load():
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise ConnectionError("MLflow not ready")
+        return LoadedModel(DummyModel(), "7", 0.5)
+
+    monkeypatch.setattr(app_module, "load_model", flaky_load)
+    monkeypatch.setenv("FRAUD_LOAD_RETRY_DELAY", "0")
+    app_module._load_with_retry()
+    assert calls["n"] == 3
+    assert app_module.STATE["loaded"].version == "7"
+
+
+def test_startup_gives_up_but_api_stays_up(monkeypatch):
+    from fraud.serving import app as app_module
+
+    def always_fail():
+        raise ConnectionError("MLflow down")
+
+    monkeypatch.setattr(app_module, "load_model", always_fail)
+    monkeypatch.setenv("FRAUD_LOAD_RETRIES", "3")
+    monkeypatch.setenv("FRAUD_LOAD_RETRY_DELAY", "0")
+    with TestClient(app_module.app) as c:
+        assert c.get("/health").json()["status"] == "no_model"
+
+
+def test_health_explains_failed_load(monkeypatch):
+    from fraud.serving import app as app_module
+
+    def no_champion():
+        raise LookupError("alias champion not found")
+
+    monkeypatch.setattr(app_module, "load_model", no_champion)
+    monkeypatch.setenv("FRAUD_LOAD_RETRIES", "1")
+    with TestClient(app_module.app) as c:
+        body = c.get("/health").json()
+    assert body["status"] == "no_model"
+    assert body["error"] == "LookupError: alias champion not found"
+
+
+def test_health_has_no_error_when_loaded(client):
+    assert "error" not in client.get("/health").json()

@@ -30,7 +30,8 @@ logging.basicConfig(
     level=os.getenv("FRAUD_LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
-STATE: dict[str, LoadedModel | None] = {"loaded": None}
+# "loaded" is the model being served; "last_error" is why the last load failed (or None).
+STATE: dict[str, LoadedModel | str | None] = {"loaded": None, "last_error": None}
 
 # --- Prometheus metrics (scraped by monitoring/prometheus.yml) --------------
 PREDICTIONS = Counter("fraud_predictions_total", "Predictions served", ["label"])
@@ -40,22 +41,53 @@ FRAUD_PROBABILITY = Histogram(
     buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0],
 )
 MODEL_LOADED = Gauge("fraud_model_loaded", "1 if a model is loaded, else 0")
+# Requests rejected by the schema (missing, renamed or non-numeric columns). A jump here
+# means an upstream producer changed its payload: a schema-drift signal for monitoring.
+SCHEMA_VIOLATIONS = Counter(
+    "fraud_schema_violations_total", "Requests rejected with 422 (schema violation)", ["path"]
+)
 
 
-def _try_load() -> None:
+def _try_load() -> bool:
+    """Load the champion model once. Returns True on success, False on failure."""
     try:
         STATE["loaded"] = load_model()
+        STATE["last_error"] = None
         MODEL_LOADED.set(1)
         log.info("Loaded model version %s", STATE["loaded"].version)
+        return True
     except Exception as exc:  # keep the API up so /health explains the problem
         STATE["loaded"] = None
+        STATE["last_error"] = f"{type(exc).__name__}: {exc}"
         MODEL_LOADED.set(0)
         log.error("Could not load model: %s", exc)
+        return False
+
+
+def _load_with_retry() -> None:
+    """Try to load the model a few times at startup, waiting longer each time.
+
+    In docker compose the API can start before the MLflow server is ready, and a single
+    failed attempt would leave the API at "no_model" until someone calls /reload.
+    Attempts and the first wait are set with FRAUD_LOAD_RETRIES (default 5) and
+    FRAUD_LOAD_RETRY_DELAY in seconds (default 2). The wait doubles after each failure,
+    so the defaults give up after about 30 seconds and the API still starts.
+    """
+    attempts = int(os.getenv("FRAUD_LOAD_RETRIES", "5"))
+    delay = float(os.getenv("FRAUD_LOAD_RETRY_DELAY", "2"))
+    for attempt in range(1, attempts + 1):
+        if _try_load():
+            return
+        if attempt < attempts:
+            log.info("Model load attempt %d/%d failed, retrying in %.0fs", attempt, attempts, delay)
+            time.sleep(delay)
+            delay *= 2
+    log.warning("Giving up after %d attempts; POST /reload once a model is registered", attempts)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    _try_load()
+    _load_with_retry()
     yield
 
 
@@ -104,6 +136,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
     if len(errors) > 5:
         summary += f"; ... and {len(errors) - 5} more"
     log.warning("Schema violation on %s: %s", request.url.path, summary)
+    SCHEMA_VIOLATIONS.labels(path=request.url.path).inc()
     return JSONResponse(
         status_code=422,
         content={"error": f"Invalid request: {summary}", "detail": jsonable_encoder(errors)},
@@ -112,8 +145,14 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 
 @app.get("/health")
 def health() -> dict:
+    """Report whether a model is loaded and, if not, why the last load failed."""
     loaded = STATE["loaded"]
-    return {"status": "ok" if loaded else "no_model", "model_version": loaded and loaded.version}
+    body = {"status": "ok" if loaded else "no_model", "model_version": loaded and loaded.version}
+    if not loaded and STATE["last_error"]:
+        # e.g. "MlflowException: Registered model alias champion not found": tells the
+        # operator to train and register a model instead of guessing from the logs.
+        body["error"] = STATE["last_error"]
+    return body
 
 
 @app.post("/reload")
