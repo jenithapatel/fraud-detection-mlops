@@ -6,12 +6,17 @@ Every prediction is appended to config.PREDICTION_LOG_PATH for drift monitoring.
 """
 
 import logging
+import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from prometheus_client import Counter, Gauge, Histogram, make_asgi_app
 
 from fraud import config
@@ -19,6 +24,12 @@ from fraud.serving.model_loader import LoadedModel, load_model
 from fraud.serving.schemas import Prediction, PredictRequest, PredictResponse
 
 log = logging.getLogger("fraud.serving")
+# uvicorn only configures its own loggers, so give ours a handler and a level.
+# FRAUD_LOG_LEVEL=DEBUG gives more detail when debugging a container.
+logging.basicConfig(
+    level=os.getenv("FRAUD_LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
 STATE: dict[str, LoadedModel | None] = {"loaded": None}
 
 # --- Prometheus metrics (scraped by monitoring/prometheus.yml) --------------
@@ -52,6 +63,53 @@ app = FastAPI(title="Fraud Detection API", version="0.1.0", lifespan=lifespan)
 app.mount("/metrics", make_asgi_app())
 
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log one line per request (method, path, status, duration) with a request id.
+
+    The id is taken from the caller's X-Request-ID header if present, otherwise
+    generated, and echoed back in the response so a client error can be matched
+    to the server log line.
+    """
+    request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        # Should not happen (handlers below turn errors into responses), but if it
+        # does we still want a log line tied to the request id before re-raising.
+        log.exception("request_id=%s %s %s failed", request_id, request.method, request.url.path)
+        raise
+    duration_ms = (time.perf_counter() - start) * 1000
+    log.info(
+        "request_id=%s %s %s status=%d duration_ms=%.1f",
+        request_id, request.method, request.url.path, response.status_code, duration_ms,
+    )
+    response.headers["X-Request-ID"] = request_id
+    return response
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Return a 422 that says which fields are wrong, in plain words.
+
+    Keeps FastAPI's usual `detail` list so existing clients still work, and adds a
+    short `error` summary, e.g. "transactions.0.V3: Field required".
+    """
+    errors = exc.errors()
+    summary = "; ".join(
+        f"{'.'.join(str(part) for part in err['loc'] if part != 'body')}: {err['msg']}"
+        for err in errors[:5]  # the first few are enough to fix the request
+    )
+    if len(errors) > 5:
+        summary += f"; ... and {len(errors) - 5} more"
+    log.warning("Schema violation on %s: %s", request.url.path, summary)
+    return JSONResponse(
+        status_code=422,
+        content={"error": f"Invalid request: {summary}", "detail": jsonable_encoder(errors)},
+    )
+
+
 @app.get("/health")
 def health() -> dict:
     loaded = STATE["loaded"]
@@ -73,7 +131,13 @@ def predict(req: PredictRequest) -> PredictResponse:
 
     start = time.perf_counter()
     X = pd.DataFrame([t.model_dump() for t in req.transactions])[config.FEATURES]
-    proba = loaded.model.predict_proba(X)[:, 1]
+    try:
+        proba = loaded.model.predict_proba(X)[:, 1]
+    except Exception as exc:
+        # The request was valid, so this is our fault (bad model artifact, version
+        # mismatch, ...): log the traceback and give the client a clear 500.
+        log.exception("Model %s failed on a batch of %d rows", loaded.version, len(X))
+        raise HTTPException(500, f"Model {loaded.version} failed to score the batch.") from exc
     labels = proba >= loaded.threshold
     LATENCY.observe(time.perf_counter() - start)
 
