@@ -67,3 +67,19 @@ def test_no_model_returns_503(client, fake_transactions):
     rows = fake_transactions[config.FEATURES].head(1).to_dict(orient="records")
     resp = client.post("/predict", json={"transactions": rows})
     assert resp.status_code == 503
+
+
+def test_schema_violation_counted(client):
+    from prometheus_client import REGISTRY
+
+    def count() -> float:
+        value = REGISTRY.get_sample_value(
+            "fraud_schema_violations_total", {"path": "/predict"}
+        )
+        return value or 0.0
+
+    before = count()
+    client.post("/predict", json={"transactions": [{"Time": 0.0}]})
+    client.post("/predict", json={"transactions": [{"Amount": "not a number"}]})
+    assert count() == before + 2
+    assert "fraud_schema_violations_total" in client.get("/metrics/").text

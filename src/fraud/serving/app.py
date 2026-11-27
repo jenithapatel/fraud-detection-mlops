@@ -40,6 +40,11 @@ FRAUD_PROBABILITY = Histogram(
     buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0],
 )
 MODEL_LOADED = Gauge("fraud_model_loaded", "1 if a model is loaded, else 0")
+# Requests rejected by the schema (missing, renamed or non-numeric columns). A jump here
+# means an upstream producer changed its payload: a schema-drift signal for monitoring.
+SCHEMA_VIOLATIONS = Counter(
+    "fraud_schema_violations_total", "Requests rejected with 422 (schema violation)", ["path"]
+)
 
 
 def _try_load() -> None:
@@ -104,6 +109,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
     if len(errors) > 5:
         summary += f"; ... and {len(errors) - 5} more"
     log.warning("Schema violation on %s: %s", request.url.path, summary)
+    SCHEMA_VIOLATIONS.labels(path=request.url.path).inc()
     return JSONResponse(
         status_code=422,
         content={"error": f"Invalid request: {summary}", "detail": jsonable_encoder(errors)},
