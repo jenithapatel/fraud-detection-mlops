@@ -83,3 +83,36 @@ def test_schema_violation_counted(client):
     client.post("/predict", json={"transactions": [{"Amount": "not a number"}]})
     assert count() == before + 2
     assert "fraud_schema_violations_total" in client.get("/metrics/").text
+
+
+def test_startup_retries_until_model_loads(monkeypatch):
+    """The first two loads fail (MLflow not up yet), the third succeeds."""
+    from fraud.serving import app as app_module
+    from fraud.serving.model_loader import DummyModel, LoadedModel
+
+    calls = {"n": 0}
+
+    def flaky_load():
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise ConnectionError("MLflow not ready")
+        return LoadedModel(DummyModel(), "7", 0.5)
+
+    monkeypatch.setattr(app_module, "load_model", flaky_load)
+    monkeypatch.setenv("FRAUD_LOAD_RETRY_DELAY", "0")
+    app_module._load_with_retry()
+    assert calls["n"] == 3
+    assert app_module.STATE["loaded"].version == "7"
+
+
+def test_startup_gives_up_but_api_stays_up(monkeypatch):
+    from fraud.serving import app as app_module
+
+    def always_fail():
+        raise ConnectionError("MLflow down")
+
+    monkeypatch.setattr(app_module, "load_model", always_fail)
+    monkeypatch.setenv("FRAUD_LOAD_RETRIES", "3")
+    monkeypatch.setenv("FRAUD_LOAD_RETRY_DELAY", "0")
+    with TestClient(app_module.app) as c:
+        assert c.get("/health").json()["status"] == "no_model"

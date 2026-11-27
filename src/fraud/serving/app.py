@@ -47,20 +47,44 @@ SCHEMA_VIOLATIONS = Counter(
 )
 
 
-def _try_load() -> None:
+def _try_load() -> bool:
+    """Load the champion model once. Returns True on success, False on failure."""
     try:
         STATE["loaded"] = load_model()
         MODEL_LOADED.set(1)
         log.info("Loaded model version %s", STATE["loaded"].version)
+        return True
     except Exception as exc:  # keep the API up so /health explains the problem
         STATE["loaded"] = None
         MODEL_LOADED.set(0)
         log.error("Could not load model: %s", exc)
+        return False
+
+
+def _load_with_retry() -> None:
+    """Try to load the model a few times at startup, waiting longer each time.
+
+    In docker compose the API can start before the MLflow server is ready, and a single
+    failed attempt would leave the API at "no_model" until someone calls /reload.
+    Attempts and the first wait are set with FRAUD_LOAD_RETRIES (default 5) and
+    FRAUD_LOAD_RETRY_DELAY in seconds (default 2). The wait doubles after each failure,
+    so the defaults give up after about 30 seconds and the API still starts.
+    """
+    attempts = int(os.getenv("FRAUD_LOAD_RETRIES", "5"))
+    delay = float(os.getenv("FRAUD_LOAD_RETRY_DELAY", "2"))
+    for attempt in range(1, attempts + 1):
+        if _try_load():
+            return
+        if attempt < attempts:
+            log.info("Model load attempt %d/%d failed, retrying in %.0fs", attempt, attempts, delay)
+            time.sleep(delay)
+            delay *= 2
+    log.warning("Giving up after %d attempts; POST /reload once a model is registered", attempts)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    _try_load()
+    _load_with_retry()
     yield
 
 
