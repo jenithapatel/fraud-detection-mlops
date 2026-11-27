@@ -27,3 +27,16 @@ groups:
         labels: {severity: critical}
         annotations:
           summary: "API is running without a model"
+
+  - name: fraud-drift
+    rules:
+      - alert: DataDriftDetected
+        # Share of feature columns flagged by Evidently. The clean-test baseline is 0%
+        # (docs/monitoring_baseline.md); 0.03 matches the --threshold in drift_report.py.
+        # The Pushgateway keeps the last pushed value, so this stays firing until a
+        # clean report is pushed.
+        expr: fraud_data_drift_share > 0.03
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "Data drift detected: {{ $value | humanizePercentage }} of columns drifted"

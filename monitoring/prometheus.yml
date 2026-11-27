@@ -10,3 +10,10 @@ scrape_configs:
     metrics_path: /metrics/
     static_configs:
       - targets: ["api:8000"]
+
+  # Drift share pushed by the Evidently report job. honor_labels keeps the job label
+  # the report set instead of overwriting it with "pushgateway".
+  - job_name: pushgateway
+    honor_labels: true
+    static_configs:
+      - targets: ["pushgateway:9091"]

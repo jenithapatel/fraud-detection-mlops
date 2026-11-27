@@ -1,7 +1,7 @@
-# Local stack: MLflow tracking server + inference API + Prometheus + Grafana.
+# Local stack: MLflow tracking server + inference API + Prometheus + Pushgateway + Grafana.
 #   docker compose up -d --build
 # MLflow UI http://localhost:5000 | API docs http://localhost:8000/docs
-# Prometheus http://localhost:9090 | Grafana http://localhost:3000 (admin/admin)
+# Prometheus http://localhost:9090 | Pushgateway http://localhost:9091 | Grafana http://localhost:3000 (admin/admin)
 services:
   mlflow:
     image: python:3.11-slim
@@ -31,7 +31,13 @@ services:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
     ports: ["9090:9090"]
-    depends_on: [api]
+    depends_on: [api, pushgateway]
+
+  # Receives the drift share pushed by `python -m fraud.monitoring.drift_report`
+  # (a batch job, so Prometheus cannot scrape it directly).
+  pushgateway:
+    image: prom/pushgateway:v1.9.0
+    ports: ["9091:9091"]
 
   grafana:
     image: grafana/grafana:11.1.0
