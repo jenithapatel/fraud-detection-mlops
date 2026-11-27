@@ -66,11 +66,13 @@ python -m fraud.monitoring.send_to_api data/processed/test.csv
 # 7. Drift simulation, then the drift report
 python -m fraud.monitoring.simulate_drift
 python -m fraud.monitoring.send_to_api data/drift/amount_x10.csv
-python -m fraud.monitoring.drift_report     # writes reports/drift_report.html
+python -m fraud.monitoring.drift_report     # writes reports/drift_report.html and pushes the
+                                            # drift share to the Pushgateway (--no-push to skip)
 ```
 
 UIs: MLflow http://localhost:5000 · API docs http://localhost:8000/docs ·
-Prometheus http://localhost:9090 (Alerts tab) · Grafana http://localhost:3000.
+Prometheus http://localhost:9090 (Alerts tab; `DataDriftDetected` fires after a drifted report)
+· Pushgateway http://localhost:9091 · Grafana http://localhost:3000.
 
 ## Run the pipeline with Airflow
 

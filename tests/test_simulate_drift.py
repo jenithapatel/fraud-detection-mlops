@@ -57,3 +57,25 @@ def test_schema_scenarios_are_rejected_by_api(fake_transactions):
         resp = client.post("/predict", json={"transactions": rows})
         assert resp.status_code == 422
         assert "Field required" in resp.json()["error"]
+
+
+def test_push_drift_share_pushes_gauge(monkeypatch):
+    """The drift share is pushed as the fraud_data_drift_share gauge under its own job."""
+    from fraud.monitoring import drift_report
+
+    captured = {}
+
+    def fake_push(url, job, registry):
+        captured["url"], captured["job"] = url, job
+        captured["value"] = registry.get_sample_value("fraud_data_drift_share")
+
+    monkeypatch.setattr(drift_report, "push_to_gateway", fake_push)
+    assert drift_report.push_drift_share(0.4, "http://gw:9091") is True
+    assert captured == {"url": "http://gw:9091", "job": "fraud_drift_report", "value": 0.4}
+
+
+def test_push_drift_share_survives_gateway_down():
+    """A dead Pushgateway must not crash the drift report."""
+    from fraud.monitoring.drift_report import push_drift_share
+
+    assert push_drift_share(0.1, "http://127.0.0.1:1") is False
