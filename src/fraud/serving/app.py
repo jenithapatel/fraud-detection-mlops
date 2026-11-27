@@ -30,7 +30,8 @@ logging.basicConfig(
     level=os.getenv("FRAUD_LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
-STATE: dict[str, LoadedModel | None] = {"loaded": None}
+# "loaded" is the model being served; "last_error" is why the last load failed (or None).
+STATE: dict[str, LoadedModel | str | None] = {"loaded": None, "last_error": None}
 
 # --- Prometheus metrics (scraped by monitoring/prometheus.yml) --------------
 PREDICTIONS = Counter("fraud_predictions_total", "Predictions served", ["label"])
@@ -51,11 +52,13 @@ def _try_load() -> bool:
     """Load the champion model once. Returns True on success, False on failure."""
     try:
         STATE["loaded"] = load_model()
+        STATE["last_error"] = None
         MODEL_LOADED.set(1)
         log.info("Loaded model version %s", STATE["loaded"].version)
         return True
     except Exception as exc:  # keep the API up so /health explains the problem
         STATE["loaded"] = None
+        STATE["last_error"] = f"{type(exc).__name__}: {exc}"
         MODEL_LOADED.set(0)
         log.error("Could not load model: %s", exc)
         return False
@@ -142,8 +145,14 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 
 @app.get("/health")
 def health() -> dict:
+    """Report whether a model is loaded and, if not, why the last load failed."""
     loaded = STATE["loaded"]
-    return {"status": "ok" if loaded else "no_model", "model_version": loaded and loaded.version}
+    body = {"status": "ok" if loaded else "no_model", "model_version": loaded and loaded.version}
+    if not loaded and STATE["last_error"]:
+        # e.g. "MlflowException: Registered model alias champion not found": tells the
+        # operator to train and register a model instead of guessing from the logs.
+        body["error"] = STATE["last_error"]
+    return body
 
 
 @app.post("/reload")

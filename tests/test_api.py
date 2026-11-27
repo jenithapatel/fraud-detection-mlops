@@ -116,3 +116,21 @@ def test_startup_gives_up_but_api_stays_up(monkeypatch):
     monkeypatch.setenv("FRAUD_LOAD_RETRY_DELAY", "0")
     with TestClient(app_module.app) as c:
         assert c.get("/health").json()["status"] == "no_model"
+
+
+def test_health_explains_failed_load(monkeypatch):
+    from fraud.serving import app as app_module
+
+    def no_champion():
+        raise LookupError("alias champion not found")
+
+    monkeypatch.setattr(app_module, "load_model", no_champion)
+    monkeypatch.setenv("FRAUD_LOAD_RETRIES", "1")
+    with TestClient(app_module.app) as c:
+        body = c.get("/health").json()
+    assert body["status"] == "no_model"
+    assert body["error"] == "LookupError: alias champion not found"
+
+
+def test_health_has_no_error_when_loaded(client):
+    assert "error" not in client.get("/health").json()
