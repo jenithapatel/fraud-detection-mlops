@@ -1,0 +1,10 @@
+# Tells Grafana to load every dashboard JSON found in /var/lib/grafana/dashboards.
+apiVersion: 1
+providers:
+  - name: fraud-detection
+    folder: Fraud Detection
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true     # edit in the UI, then export the JSON back into the repo
+    options:
+      path: /var/lib/grafana/dashboards

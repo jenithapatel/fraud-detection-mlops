@@ -1,0 +1,9 @@
+# Grafana reads this at startup, so the Prometheus datasource exists without any clicking.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus          # fixed uid so the dashboard JSON can refer to it
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
