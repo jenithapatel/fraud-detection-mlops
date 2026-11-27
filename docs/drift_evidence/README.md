@@ -27,7 +27,18 @@ training rows, current: the last 5,000 predictions). Reproduce with `make baseli
 
 ## Files
 
-- `before_clean_report.html`: Evidently report on clean traffic (0% drift).
-- `out_of_range_report.html`: Evidently report after the `out_of_range` scenario (93% drift).
-- Add the screenshots here (see the checklist in the PR): Grafana before and after, and the
-  Prometheus Alerts tab with `DataDriftDetected` firing.
+Evidently reports (open in a browser):
+- `before_clean_report.html`: clean traffic, 0% drift.
+- `out_of_range_report.html`: after the `out_of_range` scenario, 93% drift (28 of 30 columns).
+
+Screenshots, in the order of the story:
+- `grafana_after_top.png`, `grafana_after_panels.png`: Grafana during the `out_of_range` run.
+  Drift share tile 93.3%, drift-over-time panel stepping up, probability heatmap shifting.
+- `prometheus_alert_firing.png`: `DataDriftDetected` FIRING (value 0.933).
+- `evidently_out_of_range.png`: the Evidently drift summary for the same run.
+- `grafana_clean_top.png`, `grafana_clean_panels.png`: Grafana after clean traffic is sent again
+  and a fresh report is pushed. Drift share tile back to 0.0%, drift panel dropped to 0.
+- `prometheus_alert_resolved.png`: all four alerts inactive again.
+
+The clean-state screenshots were taken after the drift run, so the drift-over-time panel in them
+shows the whole cycle: drift, alert, recovery.
