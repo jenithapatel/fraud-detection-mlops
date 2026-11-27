@@ -151,8 +151,8 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "Fraud rate (5m)",
-      "description": "Predicted fraud share of traffic. Baseline 0.15%; FraudRateSpike fires above 0.5%.",
+      "title": "Fraud rate (range)",
+      "description": "Predicted fraud share of traffic over the selected time range. Baseline 0.15%; FraudRateSpike fires above 0.5%.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -201,7 +201,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(fraud_predictions_total{label=\"fraud\"}[5m])) / sum(rate(fraud_predictions_total[5m])) * 100",
+          "expr": "100 * sum(increase(fraud_predictions_total{label=\"fraud\"}[$__range])) / sum(increase(fraud_predictions_total[$__range]))",
           "legendFormat": "",
           "refId": "A",
           "instant": true
@@ -211,8 +211,8 @@
     {
       "id": 4,
       "type": "stat",
-      "title": "p95 latency (5m)",
-      "description": "95th percentile /predict latency. Baseline about 10 ms; HighPredictLatency fires above 100 ms.",
+      "title": "p95 latency (range)",
+      "description": "95th percentile /predict latency over the selected time range. Baseline about 10 ms; HighPredictLatency fires above 100 ms.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -260,7 +260,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(fraud_predict_latency_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(increase(fraud_predict_latency_seconds_bucket[$__range])) by (le))",
           "legendFormat": "",
           "refId": "A",
           "instant": true
@@ -326,7 +326,7 @@
       "id": 6,
       "type": "timeseries",
       "title": "Request rate",
-      "description": "Predict requests per second and rows scored per second.",
+      "description": "Predict requests per second (left axis) and rows scored per second (right axis).",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -357,7 +357,24 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "rows scored/s"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -602,7 +619,9 @@
             "fillOpacity": 10,
             "thresholdsStyle": {
               "mode": "line"
-            }
+            },
+            "lineInterpolation": "stepAfter",
+            "spanNulls": true
           },
           "min": 0,
           "thresholds": {
