@@ -1,23 +1,25 @@
-# Owner: Devyani. Tune thresholds after the clean-test-set baseline run.
+# Owner: Devyani. Thresholds tuned from the clean-test-set baseline in docs/monitoring_baseline.md.
 groups:
   - name: fraud-api
     rules:
       - alert: FraudRateSpike
-        # Baseline fraud rate is ~0.17%; a jump usually means input drift.
+        # Baseline predicted fraud rate is 0.15% (actual 0.17%); 0.5% is ~3x baseline,
+        # well above normal batch-to-batch noise but far earlier than the old 2% limit.
         expr: |
           sum(rate(fraud_predictions_total{label="fraud"}[5m]))
-            / sum(rate(fraud_predictions_total[5m])) > 0.02
+            / sum(rate(fraud_predictions_total[5m])) > 0.005
         for: 1m
         labels: {severity: warning}
         annotations:
-          summary: "Predicted fraud rate above 2% (possible data drift)"
+          summary: "Predicted fraud rate above 0.5% (possible data drift)"
 
       - alert: HighPredictLatency
-        expr: histogram_quantile(0.95, sum(rate(fraud_predict_latency_seconds_bucket[5m])) by (le)) > 0.5
+        # Baseline p95 is ~10 ms per 1,000-row batch; 100 ms is 10x headroom.
+        expr: histogram_quantile(0.95, sum(rate(fraud_predict_latency_seconds_bucket[5m])) by (le)) > 0.1
         for: 2m
         labels: {severity: warning}
         annotations:
-          summary: "p95 /predict latency above 500 ms"
+          summary: "p95 /predict latency above 100 ms"
 
       - alert: NoModelLoaded
         expr: fraud_model_loaded == 0
