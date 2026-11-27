@@ -72,7 +72,8 @@ python -m fraud.monitoring.drift_report     # writes reports/drift_report.html a
 
 UIs: MLflow http://localhost:5000 · API docs http://localhost:8000/docs ·
 Prometheus http://localhost:9090 (Alerts tab; `DataDriftDetected` fires after a drifted report)
-· Pushgateway http://localhost:9091 · Grafana http://localhost:3000.
+· Pushgateway http://localhost:9091 · Grafana http://localhost:3000 (admin/admin; the
+"Fraud Detection Monitoring" dashboard is provisioned from `monitoring/grafana/`).
 
 ## Run the pipeline with Airflow
 
