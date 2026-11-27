@@ -36,10 +36,28 @@ def swap_columns(df: pd.DataFrame, a: str = "V1", b: str = "V2") -> pd.DataFrame
     return out
 
 
+def drop_column(df: pd.DataFrame, column: str = "V14") -> pd.DataFrame:
+    """Schema change: an upstream producer stops sending a feature.
+
+    The API requires all 30 features, so every request should be rejected with a 422.
+    """
+    return df.drop(columns=[column])
+
+
+def rename_column(df: pd.DataFrame, old: str = "Amount", new: str = "amount_usd") -> pd.DataFrame:
+    """Schema change: an upstream producer renames a feature.
+
+    The old name is now missing, so the API should reject every request with a 422.
+    """
+    return df.rename(columns={old: new})
+
+
 SCENARIOS = {
     "amount_x10": scale_amount,
     "out_of_range": inject_out_of_range,
     "swap_v1_v2": swap_columns,
+    "schema_drop_v14": drop_column,
+    "schema_rename_amount": rename_column,
 }
 
 
